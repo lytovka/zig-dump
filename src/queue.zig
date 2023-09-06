@@ -39,6 +39,17 @@ pub fn StaticQueue(comptime T: type, comptime capacity: usize) type {
             return result;
         }
 
+        // Perhaps there's a more efficient way to do this
+        pub fn count(self: *Self) usize {
+            var res: usize = 0;
+            for (self.items) |item| {
+                if (item != null) {
+                    res += 1;
+                }
+            }
+            return res;
+        }
+
         fn nextEnqueueIndex(self: *Self) usize {
             self.eIndex = nextIndex(self.eIndex);
             return self.eIndex;
@@ -103,13 +114,12 @@ pub fn DynamicQueue(comptime T: type) type {
 }
 
 const DynamicQTest = DynamicQueue(i32);
-const StaticQTest = StaticQueue(i32, 1000);
 
 test "DynamicQueue.init" {
     var q = DynamicQTest.init(testing.allocator);
     defer q.deinit();
-    try testing.expect(q.size == 0);
-    try testing.expect(q.list.items.len == q.size);
+    expect(q.size == 0);
+    expect(q.list.items.len == q.size);
 }
 
 test "DynamicQueue.enqueue" {
@@ -120,15 +130,14 @@ test "DynamicQueue.enqueue" {
 
     defer q.deinit();
 
-    try testing.expect(q.size == 3);
-    try testing.expect(q.list.items.len == q.size);
+    expect(q.size == 3);
+    expect(q.list.items.len == q.size);
 }
 
 test "DynamicQueue.dequeue - taking from empty queue should produce error" {
     var q = DynamicQTest.init(testing.allocator);
     defer q.deinit();
-
-    try testing.expectError(QueueError.EmptyQueue, q.dequeue());
+    expectError(QueueError.EmptyQueue, q.dequeue());
 }
 
 test "DynamicQueue.dequeue" {
@@ -139,22 +148,25 @@ test "DynamicQueue.dequeue" {
     try q.enqueue(2);
     try q.enqueue(30);
 
-    try testing.expect(q.dequeue() catch unreachable == 30);
+    expect(q.dequeue() catch unreachable == 30);
 }
 
 test "DynamicQueue.peek" {
     var q = DynamicQTest.init(testing.allocator);
     defer q.deinit();
 
-    try testing.expect(q.peek() == null);
+    expect(q.peek() == null);
 
     try q.enqueue(30);
     try q.enqueue(300);
     try q.enqueue(3000);
 
-    try testing.expectEqual(@as(i32, 30), q.peek().?);
-    try testing.expect(q.size == 3);
+    expectEqual(@as(i32, 30), q.peek().?);
+    expect(q.size == 3);
 }
+
+const Q_SIZE = 1000;
+const StaticQTest = StaticQueue(i32, Q_SIZE);
 
 test "StaticQueue.init" {
     var q = StaticQTest.init();
@@ -162,8 +174,54 @@ test "StaticQueue.init" {
     try q.enqueue(3);
     try q.enqueue(4);
 
-    try testing.expect(q.eIndex == 3);
-    try testing.expect(q.dIndex == 0);
+    expect(q.eIndex == 3);
+    expect(q.dIndex == 0);
 
-    try testing.expect(q.dequeue() catch unreachable == 2);
+    expect(q.dequeue() catch unreachable == 2);
+}
+
+test "StaticQueue.enqueue & dequeue - basic" {
+    var q = StaticQTest.init();
+    var arr = [_]i32{0} ** Q_SIZE;
+
+    for (arr) |_, index| {
+        // expect(@TypeOf(index) == usize);
+        arr[index] = @intCast(i32, index);
+    }
+
+    for (arr) |item| try q.enqueue(item);
+
+    var count = q.count();
+
+    expectEqual(@as(usize, Q_SIZE), count);
+
+    for (arr) |expected| expect(try q.dequeue() == expected);
+
+    expect(q.count() == 0);
+}
+
+test "StaticQueue.enqueue - should throw exception when adding element to a full queue" {
+    var q = StaticQTest.init();
+    var arr = [_]i32{0} ** Q_SIZE;
+
+    for (arr) |_, index| {
+        // expect(@TypeOf(index) == usize);
+        arr[index] = @intCast(i32, index);
+    }
+
+    for (arr) |item| try q.enqueue(item);
+
+    expectError(QueueError.FullQueue, q.enqueue(Q_SIZE + 1));
+}
+
+fn expectEqual(expected: anytype, actual: @TypeOf(expected)) void {
+    testing.expectEqual(expected, actual) catch unreachable;
+}
+
+fn expect(predicate: bool) void {
+    testing.expect(predicate) catch unreachable;
+}
+
+fn expectError(expected: anyerror, actual: anytype) void {
+    testing.expectError(expected, actual) catch unreachable;
 }
